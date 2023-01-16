@@ -19,7 +19,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 public class Robot extends TimedRobot {
   
 
-
+  //initilizes all the motors to their respective pwm ports
   VictorSP front_Right = new VictorSP(1);
   VictorSP front_Left = new VictorSP(2);
   VictorSP back_Right = new VictorSP(3);
@@ -28,7 +28,8 @@ public class Robot extends TimedRobot {
   VictorSP lift_motor = new VictorSP(5);
   VictorSP Elevator = new VictorSP(6);
   VictorSP claw = new VictorSP(7);
-
+  
+  //initilizes the joystick
   Joystick stick = new Joystick(1);
   
 
@@ -92,11 +93,15 @@ public class Robot extends TimedRobot {
     double front_Right_Power = (sticky - stickx - stickz) / denominator;
     double back_Right_Power = (sticky + stickx - stickz) / denominator;
 
+
+    //takes the powers and sets the motors to match it on the robot
     front_Right.set(front_Right_Power);
     front_Left.set(front_Left_Power);
     back_Left.set(back_Left_Power);
     back_Right.set(back_Right_Power); 
 
+
+    //Controls the lift motor using if statements
     if (stick.getRawButton(1) ){
       lift_motor.set(-.3);
 
