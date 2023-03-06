@@ -244,14 +244,10 @@ public class Robot extends TimedRobot {
 
     if (Controller.getXButton() == true && myEncoder.getDistance() / 365 < 5.) {
       motor.set(.3);
-
     } else if (Controller.getBButton() == true && myEncoder.getDistance() > 0.) {
       motor.set(-.3);
-
     } else {
-
       motor.set(0);
-
     }
 
     /*
