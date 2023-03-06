@@ -14,6 +14,7 @@ import edu.wpi.first.wpilibj.motorcontrol.VictorSP;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.wpilibj.I2C;
+import edu.wpi.first.wpilibj.Servo;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -32,7 +33,7 @@ public class Robot extends TimedRobot {
 
   // DigitalInput limitSwitch = new DigitalInput(5);
   // DigitalInput limitSwitch2 = new DigitalInput(6);
-  LinearServo lActuator = new LinearServo(3, 150, 60);
+  Servo lActuator = new Servo(2);
 
   VictorSP motor = new VictorSP(0);
   VictorSP motor1 = new VictorSP(1);
@@ -168,6 +169,10 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
+    lActuator.setBounds(2.0, 1.8, 1.5, 1.2, 1.0);
+    lActuator.setSpeed(1.0); // to open
+    lActuator.setSpeed(-1.0); // to close
+
 
     double rx = Controller.getRightX(); // Remember, this is reversed!
     double x = Controller.getLeftX();
@@ -179,10 +184,63 @@ public class Robot extends TimedRobot {
     double frontRightPower = (y - x - rx) / denominator;
     double backRightPower = (y + x - rx) / denominator;
 
+    //speed variables for slow revup
+    double frontLeftSpeed = 0;
+    double backLeftSpeed = 0;
+    double frontRightSpeed = 0;
+    double backRightSpeed = 0;
+
+     double INCREMENT = 0.1;
+     double DELAY = 0.05;
+
+
+    //code to slow the rev up of frontLeftMotor
+    while (frontLeftSpeed < Math.abs(frontLeftPower)) {
+      //Checks if power value is negative or positve and subtracts or adds depending on symbol
+      if (frontLeftPower > 0) frontLeftSpeed += INCREMENT;
+      else if (frontLeftPower < 0) frontLeftSpeed-= INCREMENT;
+      //sets the speed of the motor and makes sure to make all the motors spin at the same time
+      motor.set(frontLeftSpeed * (18.0 / 16.72));
+      Timer.delay(DELAY);
+    }
+
+
+    //code to slow the rev up of Backleft motor
+    while (backLeftSpeed < Math.abs(backLeftPower)) {
+      //Checks if power value is negative or positve and subtracts or adds depending on symbol
+      if (backLeftPower > 0) backLeftSpeed += INCREMENT;
+      else if (backLeftPower < 0) backLeftSpeed-= INCREMENT;
+      //sets the speed of the motor and makes sure to make all the motors spin at the same time
+      motor.set(backLeftSpeed * (16.72 / 16.72));
+      Timer.delay(DELAY);
+    }
+
+    //code to slow the rev up of Front Right motor
+    while (frontRightSpeed < Math.abs(frontRightPower)) {
+      //Checks if power value is negative or positve and subtracts or adds depending on symbol
+      if (frontRightPower > 0) frontRightSpeed += INCREMENT;
+      else if (frontRightPower < 0) frontRightSpeed-= INCREMENT;
+      //sets the speed of the motor and makes sure to make all the motors spin at the same time
+      motor.set(frontRightSpeed * (19.76 / 16.72));
+      Timer.delay(DELAY);
+    }
+    
+    //code to slow the rev up of Back Right motor
+    while (backRightSpeed < Math.abs(backRightPower)) {
+      //Checks if power value is negative or positve and subtracts or adds depending on symbol
+      if (backRightPower > 0) backRightSpeed += INCREMENT;
+      else if (backRightPower < 0) backRightSpeed-= INCREMENT;
+      //sets the speed of the motor and makes sure to make all the motors spin at the same time
+      motor.set(backRightSpeed * (17.71 / 16.72));
+      Timer.delay(DELAY);
+    }
+
+    //Orignal driving mechnism
+    /* 
     motorFrontLeft.set(frontLeftPower * (18.0 / 16.72));
     motorBackLeft.set(backLeftPower * (16.72 / 16.72));
     motorFrontRight.set(frontRightPower * (19.76 / 16.72));
-    motorBackRight.set(backRightPower * (17.71 / 16.72));
+    motorBackRight.set(backRightPower * (17.71 / 16.72));*/
 
     if (Controller.getXButton() == true && myEncoder.getDistance() / 365 < 5.) {
       motor.set(.3);
