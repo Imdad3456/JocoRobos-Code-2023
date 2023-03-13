@@ -10,9 +10,15 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.XboxController;
+import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+import edu.wpi.first.wpilibj.motorcontrol.MotorControllerGroup;
+import edu.wpi.first.wpilibj.motorcontrol.Victor;
 import edu.wpi.first.wpilibj.motorcontrol.VictorSP;
+
+import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import edu.wpi.first.math.controller.PIDController;
+
 import edu.wpi.first.wpilibj.I2C;
 import edu.wpi.first.wpilibj.Servo;
 
@@ -27,24 +33,23 @@ import edu.wpi.first.wpilibj.Servo;
  */
 
 public class Robot extends TimedRobot {
-  // VictorSP motor = new VictorSP(0);
+
+  VictorSP lActuator = new VictorSP(3);
+  VictorSP motor2 = new VictorSP(1);
+  Servo Claw = new Servo(5);
   XboxController Controller = new XboxController(0);
   private final Timer m_timer = new Timer();
 
-  // DigitalInput limitSwitch = new DigitalInput(5);
-  // DigitalInput limitSwitch2 = new DigitalInput(6);
-  Servo lActuator = new Servo(2);
-
-  VictorSP motor = new VictorSP(0);
-  VictorSP motor1 = new VictorSP(1);
-  VictorSP motor2 = new VictorSP(2);
   WPI_VictorSPX motorFrontLeft = new WPI_VictorSPX(1);
   WPI_VictorSPX motorFrontRight = new WPI_VictorSPX(2);
   WPI_VictorSPX motorBackLeft = new WPI_VictorSPX(3);
   WPI_VictorSPX motorBackRight = new WPI_VictorSPX(4);
-  // LinearServo LiftMotor = new LinearServo(0, 152, 100);
+  MotorControllerGroup right_Motor_Group = new MotorControllerGroup(motorBackRight, motorFrontRight);
+  MotorControllerGroup left_Motor_Group = new MotorControllerGroup(motorBackLeft, motorFrontLeft);
 
-  Encoder myEncoder = new Encoder(0, 1);
+  DifferentialDrive drive = new DifferentialDrive(left_Motor_Group, right_Motor_Group);
+
+  Encoder myEncoder = new Encoder(7, 8);
   PIDController myPID;
 
   double allowableError = 10;
@@ -74,6 +79,7 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotInit() {
+
     // motor controller on port 0
     myPID = new PIDController(1, 1, 1); // setup a PID controller with an encoder source and motor output
 
@@ -143,122 +149,85 @@ public class Robot extends TimedRobot {
   @Override
   public void autonomousPeriodic() {
     System.out.println(m_timer.get());
-    if (m_timer.get() < 2000.0) {
+    while (m_timer.get() < .5) {
 
-      motorFrontLeft.set(.3);
-      motorBackLeft.set(.3);
-      motorFrontRight.set(-.3);
-      motorBackRight.set(-.3);
+      drive.arcadeDrive(-.8, 0);
       // Drive forwards half speed, make sure to turn input squaring off
+    }
+    while (m_timer.get() < 1) {
 
-    } else {
-      motorFrontLeft.stopMotor();
-      motorBackLeft.stopMotor();
-      motorFrontRight.stopMotor();
-      motorBackRight.stopMotor();
+      drive.arcadeDrive(0, 0);
+      // Drive forwards half speed, make sure to turn input squaring off
+    }
+    while (m_timer.get() < 3) {
+
+      drive.arcadeDrive(.6, 0);
+      // Drive forwards half speed, make sure to turn input squaring off
     }
   }
 
   /** This function is called once when teleop is enabled. */
   @Override
   public void teleopInit() {
-    myEncoder.setDistancePerPulse(2. / 64.);
-    myEncoder.setReverseDirection(true);
+    myEncoder.reset();
+    myEncoder.setDistancePerPulse(1. / 64.);
   }
 
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
-    lActuator.setBounds(2.0, 1.8, 1.5, 1.2, 1.0);
-    lActuator.setSpeed(1.0); // to open
-    lActuator.setSpeed(-1.0); // to close
 
+    double triggerValue = Controller.getRawAxis(3);
+    double Left_y = -Controller.getLeftY();
+    double Right_y = -Controller.getLeftX();
 
-    double rx = Controller.getRightX(); // Remember, this is reversed!
-    double x = Controller.getLeftX();
-    double y = -Controller.getLeftY();
-
-    double denominator = 1;// Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
-    double frontLeftPower = (y + x + rx) / denominator;
-    double backLeftPower = (y - x + rx) / denominator;
-    double frontRightPower = (y - x - rx) / denominator;
-    double backRightPower = (y + x - rx) / denominator;
-
-    //speed variables for slow revup
-    double frontLeftSpeed = 0;
-    double backLeftSpeed = 0;
-    double frontRightSpeed = 0;
-    double backRightSpeed = 0;
-
-     double INCREMENT = 0.1;
-     double DELAY = 0.05;
-
-
-    //code to slow the rev up of frontLeftMotor
-    while (frontLeftSpeed < Math.abs(frontLeftPower)) {
-      //Checks if power value is negative or positve and subtracts or adds depending on symbol
-      if (frontLeftPower > 0) frontLeftSpeed += INCREMENT;
-      else if (frontLeftPower < 0) frontLeftSpeed-= INCREMENT;
-      //sets the speed of the motor and makes sure to make all the motors spin at the same time
-      motor.set(frontLeftSpeed * (18.0 / 16.72));
-      Timer.delay(DELAY);
-    }
-
-
-    //code to slow the rev up of Backleft motor
-    while (backLeftSpeed < Math.abs(backLeftPower)) {
-      //Checks if power value is negative or positve and subtracts or adds depending on symbol
-      if (backLeftPower > 0) backLeftSpeed += INCREMENT;
-      else if (backLeftPower < 0) backLeftSpeed-= INCREMENT;
-      //sets the speed of the motor and makes sure to make all the motors spin at the same time
-      motor.set(backLeftSpeed * (16.72 / 16.72));
-      Timer.delay(DELAY);
-    }
-
-    //code to slow the rev up of Front Right motor
-    while (frontRightSpeed < Math.abs(frontRightPower)) {
-      //Checks if power value is negative or positve and subtracts or adds depending on symbol
-      if (frontRightPower > 0) frontRightSpeed += INCREMENT;
-      else if (frontRightPower < 0) frontRightSpeed-= INCREMENT;
-      //sets the speed of the motor and makes sure to make all the motors spin at the same time
-      motor.set(frontRightSpeed * (19.76 / 16.72));
-      Timer.delay(DELAY);
-    }
-    
-    //code to slow the rev up of Back Right motor
-    while (backRightSpeed < Math.abs(backRightPower)) {
-      //Checks if power value is negative or positve and subtracts or adds depending on symbol
-      if (backRightPower > 0) backRightSpeed += INCREMENT;
-      else if (backRightPower < 0) backRightSpeed-= INCREMENT;
-      //sets the speed of the motor and makes sure to make all the motors spin at the same time
-      motor.set(backRightSpeed * (17.71 / 16.72));
-      Timer.delay(DELAY);
-    }
-
-    //Orignal driving mechnism
-    /* 
-    motorFrontLeft.set(frontLeftPower * (18.0 / 16.72));
-    motorBackLeft.set(backLeftPower * (16.72 / 16.72));
-    motorFrontRight.set(frontRightPower * (19.76 / 16.72));
-    motorBackRight.set(backRightPower * (17.71 / 16.72));*/
-
-    if (Controller.getXButton() == true && myEncoder.getDistance() / 365 < 5.) {
-      motor.set(.3);
-    } else if (Controller.getBButton() == true && myEncoder.getDistance() > 0.) {
-      motor.set(-.3);
+    double scale = 1.0;
+    if (Controller.getRawAxis(3) > 0.1) {
+      // Right trigger is pressed, set motor speeds to 50%
+      scale = 0.5;
     } else {
-      motor.set(0);
+      scale = 1.0;
     }
 
-    /*
-     * if (Controller.getYButton() == true) {
-     * LiftMotor.setSpeed(1);
-     * } else if (Controller.getAButton() == true) {
-     * LiftMotor.setSpeed(-1);
-     * } else {
-     * LiftMotor.setSpeed(0);
-     * }
-     */
+    // arcade drive code
+    double speed = Left_y * scale;
+    double turn = Right_y * scale;
+    // CHANGE THE X VALUE TO THE AXIS FOR RIGHT JOYSTICK X AXIS
+
+    double left = speed + turn;
+    double right = speed - turn;
+
+    motorFrontLeft.set(left);
+    motorBackLeft.set(left);
+    motorFrontRight.set(-right);
+    motorBackRight.set(-right);
+
+    Claw.setBounds(2.0, 1.8, 1.5, 1.2, 1.0);
+
+    if (Controller.getXButton() == true && myEncoder.getDistance() / 360 < 2.) {
+      motor2.set(-.4);
+    } else if (Controller.getBButton() == true) // && myEncoder.getDistance() / 360 > 2.)
+    {
+      motor2.set(.4);
+    } else {
+      motor2.set(0);
+    }
+
+    // Linear
+    if (Controller.getYButton() == true) {
+      lActuator.set(-1);
+    } else if (Controller.getAButton() == true) {
+      lActuator.set(1);
+    } else {
+      lActuator.set(0);
+    }
+
+    // Claw controls with bumpers
+    if (Controller.getLeftBumper() == true) {
+      Claw.set(1);
+    } else {
+      Claw.set(0);
+    }
 
     double distancetraveled = myEncoder.getDistance() / 360;
     System.out.println(distancetraveled);
@@ -293,7 +262,5 @@ public class Robot extends TimedRobot {
   @Override
   public void testInit() {
   }
-
-  /** This function is called periodically during test mode. */
 
 }
