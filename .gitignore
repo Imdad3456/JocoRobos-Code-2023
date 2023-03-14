@@ -163,3 +163,4 @@ bin/
 
 # Misc.
 .vscode
+vendordeps
