@@ -12,15 +12,16 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.motorcontrol.MotorControllerGroup;
+import edu.wpi.first.wpilibj.motorcontrol.Victor;
 import edu.wpi.first.wpilibj.motorcontrol.VictorSP;
+
+import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import edu.wpi.first.math.controller.PIDController;
-import edu.wpi.first.wpilibj.Servo;
 
-/*
- import edu.wpi.first.wpilibj.motorcontrol.Victor;
- import com.ctre.phoenix.motorcontrol.ControlMode;
-*/
+import edu.wpi.first.wpilibj.I2C;
+import edu.wpi.first.wpilibj.Joystick;
+import edu.wpi.first.wpilibj.Servo;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -33,10 +34,11 @@ import edu.wpi.first.wpilibj.Servo;
  */
 
 public class Robot extends TimedRobot {
+
   VictorSP lActuator = new VictorSP(3);
   VictorSP motor2 = new VictorSP(1);
   Servo Claw = new Servo(5);
-  XboxController Controller = new XboxController(0);
+  Joystick Controller = new Joystick(0);
   private final Timer m_timer = new Timer();
 
   WPI_VictorSPX motorFrontLeft = new WPI_VictorSPX(1);
@@ -56,6 +58,21 @@ public class Robot extends TimedRobot {
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
+  private static final int MPU6050_ADDR = 0x68;
+  private static final int MPU6050_PWR_MGMT_1 = 0x6B;
+  private static final int MPU6050_RESET = 0x80;
+  private static final int MPU6050_CLOCK_PLL_XGYRO = 0x01;
+  private static final int MPU6050_SMPLRT_DIV = 0x19;
+  private static final int MPU6050_SMPLRT_DIV_VAL = 0x07;
+  private static final int MPU6050_CONFIG = 0x1A;
+  private static final int MPU6050_DLPF_CFG_0 = 0x00;
+  private static final int MPU6050_GYRO_CONFIG = 0x1B;
+  private static final int MPU6050_GYRO_FS_SEL_2000 = 0x18;
+  private static final int MPU6050_ACCEL_CONFIG = 0x1C;
+  private static final int MPU6050_ACCEL_FS_SEL_16 = 0x18;
+
+  private I2C i2c;
+
   /**
    * This function is run when the robot is first started up and should be used
    * for any
@@ -74,6 +91,16 @@ public class Robot extends TimedRobot {
     SmartDashboard.putNumber("Allowable Error: ", allowableError);
 
     myPID.setSetpoint(0);
+
+    i2c = new I2C(I2C.Port.kOnboard, MPU6050_ADDR);
+
+    i2c.write(MPU6050_PWR_MGMT_1, MPU6050_RESET);
+    Timer.delay(0.1);
+    i2c.write(MPU6050_PWR_MGMT_1, MPU6050_CLOCK_PLL_XGYRO);
+    i2c.write(MPU6050_SMPLRT_DIV, MPU6050_SMPLRT_DIV_VAL);
+    i2c.write(MPU6050_CONFIG, MPU6050_DLPF_CFG_0);
+    i2c.write(MPU6050_GYRO_CONFIG, MPU6050_GYRO_FS_SEL_2000);
+    i2c.write(MPU6050_ACCEL_CONFIG, MPU6050_ACCEL_FS_SEL_16);
   }
 
   /**
@@ -150,11 +177,11 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
-    System.out.println(MPU6050.readGyro("x"));
 
-    //double triggerValue = Controller.getRawAxis(3);
-    double Left_y = -Controller.getLeftY();
-    double Right_y = -Controller.getLeftX();
+    
+    double Left_y = Controller.getRawAxis(0);
+    double Right_y = -Controller.getRawAxis(1);
+    double speeds = Controller.getRawAxis(3);
 
     double scale = 1.0;
     if (Controller.getRawAxis(3) > 0.1) {
@@ -172,16 +199,16 @@ public class Robot extends TimedRobot {
     double left = speed + turn;
     double right = speed - turn;
 
-    motorFrontLeft.set(left);
-    motorBackLeft.set(left);
-    motorFrontRight.set(-right);
-    motorBackRight.set(-right);
+    motorFrontLeft.set(left * speeds);
+    motorBackLeft.set(left * speeds);
+    motorFrontRight.set(-right * speeds);
+    motorBackRight.set(-right * speeds);
 
     Claw.setBounds(2.0, 1.8, 1.5, 1.2, 1.0);
 
-    if (Controller.getXButton() == true && myEncoder.getDistance() / 360 < 2.) {
+    if (Controller.getRawButton(3) == true && myEncoder.getDistance() / 360 < 2.) {
       motor2.set(-.4);
-    } else if (Controller.getBButton() == true) // && myEncoder.getDistance() / 360 > 2.)
+    } else if (Controller.getRawButton(3) == true) // && myEncoder.getDistance() / 360 > 2.)
     {
       motor2.set(.4);
     } else {
@@ -189,23 +216,25 @@ public class Robot extends TimedRobot {
     }
 
     // Linear
-    if (Controller.getYButton() == true) {
+    if (Controller.getRawButton(2) == true) {
       lActuator.set(-1);
-    } else if (Controller.getAButton() == true) {
+    } else if (Controller.getRawButton(2) == true) {
       lActuator.set(1);
     } else {
       lActuator.set(0);
     }
 
     // Claw controls with bumpers
-    if (Controller.getLeftBumper() == true) {
-      Claw.set(1);
-    } else {
+    if (Controller.getRawButton(1) == true) {
       Claw.set(0);
+    } else {
+      Claw.set(1);
     }
 
-    double distancetraveled = myEncoder.getDistance() / 360;
-    System.out.println(distancetraveled);
+    /*
+     * double distancetraveled = myEncoder.getDistance() / 360;
+     * System.out.println(distancetraveled);
+     */
 
     // read the PID values from the SmartDashboard and update the PID controller
     myPID.setPID(SmartDashboard.getNumber("P", 0), SmartDashboard.getNumber("I", 0), SmartDashboard.getNumber("D", 0));
