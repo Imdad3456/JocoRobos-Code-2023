@@ -4,6 +4,10 @@
 
 package frc.robot;
 
+import edu.wpi.first.wpilibj.AddressableLED;
+import edu.wpi.first.wpilibj.AddressableLEDBuffer;
+import edu.wpi.first.wpilibj.AnalogGyro;
+import edu.wpi.first.wpilibj.BuiltInAccelerometer;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
@@ -14,6 +18,9 @@ import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.motorcontrol.MotorControllerGroup;
 import edu.wpi.first.wpilibj.motorcontrol.Victor;
 import edu.wpi.first.wpilibj.motorcontrol.VictorSP;
+import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
+
+
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
@@ -21,7 +28,10 @@ import edu.wpi.first.math.controller.PIDController;
 
 import edu.wpi.first.wpilibj.I2C;
 import edu.wpi.first.wpilibj.Joystick;
+
+import edu.wpi.first.wpilibj.interfaces.Accelerometer;
 import edu.wpi.first.wpilibj.Servo;
+
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -35,11 +45,27 @@ import edu.wpi.first.wpilibj.Servo;
 
 public class Robot extends TimedRobot {
 
-  VictorSP lActuator = new VictorSP(3);
-  VictorSP motor2 = new VictorSP(1);
-  Servo Claw = new Servo(5);
+  private final static byte MPU6050_ADDRESS = 0x68;
+    private final static int REGISTER_PWR_MGMT_1 = 0x6B;
+    private final static int REGISTER_GYRO = 0x43;
+
+    
+    private byte[] buffer = new byte[6];
+
+    Accelerometer accelerometer = new BuiltInAccelerometer();
+  
+
+  VictorSP lActuator = new VictorSP(9);
+  VictorSP motor2 = new VictorSP(8);
+  VictorSP Claw = new VictorSP(7);
   Joystick Controller = new Joystick(0);
+  Joystick Controller2 = new Joystick(1);
+
+ 
   private final Timer m_timer = new Timer();
+
+  double prevXAccel = 0;
+  double prevYAccel = 0;
 
   WPI_VictorSPX motorFrontLeft = new WPI_VictorSPX(1);
   WPI_VictorSPX motorFrontRight = new WPI_VictorSPX(2);
@@ -47,31 +73,26 @@ public class Robot extends TimedRobot {
   WPI_VictorSPX motorBackRight = new WPI_VictorSPX(4);
   MotorControllerGroup right_Motor_Group = new MotorControllerGroup(motorBackRight, motorFrontRight);
   MotorControllerGroup left_Motor_Group = new MotorControllerGroup(motorBackLeft, motorFrontLeft);
-
-  DifferentialDrive drive = new DifferentialDrive(left_Motor_Group, right_Motor_Group);
+  MPU6050Sensor accel = new MPU6050Sensor();
+ 
+  AnalogGyro gyro = new AnalogGyro(0);
+  
 
   Encoder myEncoder = new Encoder(7, 8);
   PIDController myPID;
+  AddressableLED m_led = new AddressableLED(0);
 
+  AddressableLEDBuffer m_ledBuffer = new AddressableLEDBuffer(120);
   double allowableError = 10;
+
+  double heading;
+
+  DifferentialDrive drive = new DifferentialDrive(right_Motor_Group, left_Motor_Group);
 
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
-  private static final int MPU6050_ADDR = 0x68;
-  private static final int MPU6050_PWR_MGMT_1 = 0x6B;
-  private static final int MPU6050_RESET = 0x80;
-  private static final int MPU6050_CLOCK_PLL_XGYRO = 0x01;
-  private static final int MPU6050_SMPLRT_DIV = 0x19;
-  private static final int MPU6050_SMPLRT_DIV_VAL = 0x07;
-  private static final int MPU6050_CONFIG = 0x1A;
-  private static final int MPU6050_DLPF_CFG_0 = 0x00;
-  private static final int MPU6050_GYRO_CONFIG = 0x1B;
-  private static final int MPU6050_GYRO_FS_SEL_2000 = 0x18;
-  private static final int MPU6050_ACCEL_CONFIG = 0x1C;
-  private static final int MPU6050_ACCEL_FS_SEL_16 = 0x18;
-
-  private I2C i2c;
+ 
 
   /**
    * This function is run when the robot is first started up and should be used
@@ -80,9 +101,22 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotInit() {
+     // Take the accelerometer out of sleep mode
+    
+   
 
     // motor controller on port 0
     myPID = new PIDController(1, 1, 1); // setup a PID controller with an encoder source and motor output
+
+
+      // PWM port 9
+    // Must be a PWM header, not MXP or DIO
+     
+    m_led.setLength(m_ledBuffer.getLength());
+
+    // Set the data
+    m_led.setData(m_ledBuffer);
+    m_led.start();
 
     SmartDashboard.putNumber("P", .01);
     SmartDashboard.putNumber("I", 0);
@@ -92,15 +126,6 @@ public class Robot extends TimedRobot {
 
     myPID.setSetpoint(0);
 
-    i2c = new I2C(I2C.Port.kOnboard, MPU6050_ADDR);
-
-    i2c.write(MPU6050_PWR_MGMT_1, MPU6050_RESET);
-    Timer.delay(0.1);
-    i2c.write(MPU6050_PWR_MGMT_1, MPU6050_CLOCK_PLL_XGYRO);
-    i2c.write(MPU6050_SMPLRT_DIV, MPU6050_SMPLRT_DIV_VAL);
-    i2c.write(MPU6050_CONFIG, MPU6050_DLPF_CFG_0);
-    i2c.write(MPU6050_GYRO_CONFIG, MPU6050_GYRO_FS_SEL_2000);
-    i2c.write(MPU6050_ACCEL_CONFIG, MPU6050_ACCEL_FS_SEL_16);
   }
 
   /**
@@ -116,6 +141,19 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotPeriodic() {
+
+      // Gets the current accelerations in the X and Y directions
+      
+   
+  
+
+      
+    for (var i = 0; i < m_ledBuffer.getLength(); i++) {
+      // Sets the specified LED to the RGB values for red
+      m_ledBuffer.setRGB(i, 255, 0, 0);
+   }
+   
+   m_led.setData(m_ledBuffer);
 
   }
 
@@ -138,9 +176,14 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void autonomousInit() {
+     
     m_autoSelected = m_chooser.getSelected();
     // m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
     System.out.println("Auto selected: " + m_autoSelected);
+    
+
+    
+
 
     m_timer.reset();
     m_timer.start();
@@ -149,23 +192,68 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during autonomous. */
   @Override
   public void autonomousPeriodic() {
-    System.out.println(m_timer.get());
-    while (m_timer.get() < .5) {
 
-      drive.arcadeDrive(-.8, 0);
-      // Drive forwards half speed, make sure to turn input squaring off
-    }
+      double yAccel = accelerometer.getY();
+      double zAccel = accelerometer.getZ();
+  
+      // Calculates the jerk in the X and Y directions
+      // Divides by .02 because default loop timing is 20ms
+      
+  
+    
+     
+
+
+    
     while (m_timer.get() < 1) {
-
-      drive.arcadeDrive(0, 0);
+     
+      double xAccel = accelerometer.getX();
+      motorFrontLeft.set(.25);
+      motorBackLeft.set(.25);
+      motorFrontRight.set(-.25);
+      motorBackRight.set(-.25);
+      System.out.println(xAccel);
+  
       // Drive forwards half speed, make sure to turn input squaring off
     }
-    while (m_timer.get() < 3) {
+    while (m_timer.get() < 2) {
+      double xAccel = accelerometer.getX();
+      
+      motorFrontLeft.set(0);
+      motorBackLeft.set(0);
+      motorFrontRight.set(0);
+      motorBackRight.set(0);
+      System.out.println(xAccel);
+  
+      // Drive forwards half speed, make sure to turn input squaring off
+    }
+    while (m_timer.get() < 4) {
+      double xAccel = accelerometer.getX();
 
-      drive.arcadeDrive(.6, 0);
+      motorFrontLeft.set(-.5);
+      motorBackLeft.set(-.5);
+      motorFrontRight.set(.5);
+      motorBackRight.set(.5);
+      System.out.println(xAccel);
+  
+      // Drive forwards half speed, make sure to turn input squaring off
+    }
+    while (m_timer.get() < 10) {
+     
+      while (accelerometer.getX() > 0 ){
+        double xAccel = accelerometer.getX();
+        motorFrontLeft.set(-.2);
+        motorBackLeft.set(-.2);
+        motorFrontRight.set(.2);
+        motorBackRight.set(.2);
+        System.out.println(xAccel);
+    
+      }
+      
       // Drive forwards half speed, make sure to turn input squaring off
     }
   }
+
 
   /** This function is called once when teleop is enabled. */
   @Override
@@ -177,38 +265,40 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
-
+    // Read the gyro measurements (6 bytes)
     
-    double Left_y = Controller.getRawAxis(0);
-    double Right_y = -Controller.getRawAxis(1);
-    double speeds = Controller.getRawAxis(3);
 
-    double scale = 1.0;
-    if (Controller.getRawAxis(3) > 0.1) {
-      // Right trigger is pressed, set motor speeds to 50%
-      scale = 0.5;
-    } else {
-      scale = 1.0;
-    }
+
+
+
+   
+    
+
+   
+    double axis_z = Controller.getRawAxis(2);
+    double  axis_y= -Controller.getRawAxis(1);
+    double speeds = convertToZeroPointOneToOne(-Controller.getRawAxis(3));
+
+   
 
     // arcade drive code
-    double speed = Left_y * scale;
-    double turn = Right_y * scale;
+    double speed = axis_y * speeds;
+    double turn = axis_z * speeds;
     // CHANGE THE X VALUE TO THE AXIS FOR RIGHT JOYSTICK X AXIS
 
     double left = speed + turn;
     double right = speed - turn;
 
-    motorFrontLeft.set(left * speeds);
-    motorBackLeft.set(left * speeds);
-    motorFrontRight.set(-right * speeds);
-    motorBackRight.set(-right * speeds);
+    motorFrontLeft.set(left);
+    motorBackLeft.set(left);
+    motorFrontRight.set(-right);
+    motorBackRight.set(-right);
 
-    Claw.setBounds(2.0, 1.8, 1.5, 1.2, 1.0);
+    
 
     if (Controller.getRawButton(3) == true && myEncoder.getDistance() / 360 < 2.) {
       motor2.set(-.4);
-    } else if (Controller.getRawButton(3) == true) // && myEncoder.getDistance() / 360 > 2.)
+    } else if (Controller.getRawButton(4) == true) // && myEncoder.getDistance() / 360 > 2.)
     {
       motor2.set(.4);
     } else {
@@ -216,41 +306,41 @@ public class Robot extends TimedRobot {
     }
 
     // Linear
-    if (Controller.getRawButton(2) == true) {
-      lActuator.set(-1);
-    } else if (Controller.getRawButton(2) == true) {
-      lActuator.set(1);
-    } else {
-      lActuator.set(0);
-    }
+    lActuator.set(Controller2.getRawAxis(1));
 
     // Claw controls with bumpers
+    
     if (Controller.getRawButton(1) == true) {
-      Claw.set(0);
-    } else {
       Claw.set(1);
-    }
+      System.out.println(1);
+    } else  if (Controller.getRawButton(2) == true){
+      Claw.set(-.7);
+    }else{
+      Claw.set(0);}
 
+
+    
     /*
      * double distancetraveled = myEncoder.getDistance() / 360;
      * System.out.println(distancetraveled);
      */
 
-    // read the PID values from the SmartDashboard and update the PID controller
-    myPID.setPID(SmartDashboard.getNumber("P", 0), SmartDashboard.getNumber("I", 0), SmartDashboard.getNumber("D", 0));
-
-    // update setpoint to whatever has been entered on smartdashboard
-    myPID.setSetpoint(SmartDashboard.getNumber("Distance Setpoint", 0));
-
-    // update the allowable error from the SmartDashboard
-    allowableError = SmartDashboard.getNumber("Allowable Error: ", 0);
-
-    SmartDashboard.putNumber("Encoder Get: ", myEncoder.get()); // show encoder reading on the dashboard
 
     // We know we are on target when the difference in our setpoint and
     // encoder value are less than our determined allowable error
-    SmartDashboard.putBoolean("On Target: ", Math.abs(myPID.getSetpoint() - myEncoder.get()) < allowableError);
+
   }
+  /** Adapted from {@link ADXL345_I2C#accelFromBytes} */
+
+
+  private double convertToZeroPointOneToOne(double value) {
+    return (value + 1) / 2 * 0.9 + 0.1;
+  }
+  private double convertToZeroPointOneT(double value) {
+    return (value + 1) / 2;
+  }
+
+
 
   /** This function is called once when the robot is disabled. */
   @Override
@@ -266,5 +356,49 @@ public class Robot extends TimedRobot {
   @Override
   public void testInit() {
   }
+
+  
+
+public class MPU6050Sensor implements Accelerometer {
+    private static final int MPU6050_ADDRESS = 0x68;
+    private static final int MPU6050_ACCEL_XOUT_H = 0x3B;
+    private static final int MPU6050_PWR_MGMT_1 = 0x6B;
+
+    private I2C i2c;
+    private byte[] buffer;
+
+    public MPU6050Sensor() {
+        i2c = new I2C(I2C.Port.kOnboard, MPU6050_ADDRESS);
+        buffer = new byte[6];
+        i2c.write(MPU6050_PWR_MGMT_1, 0);
+    }
+
+    public double getX() {
+        i2c.read(MPU6050_ACCEL_XOUT_H, 6, buffer);
+        int x = (buffer[0] << 8) | (buffer[1] & 0xFF);
+        return x / 16384.0;
+    }
+
+    public double getY() {
+        i2c.read(MPU6050_ACCEL_XOUT_H + 2, 6, buffer);
+        int y = (buffer[2] << 8) | (buffer[3] & 0xFF);
+        return y / 16384.0;
+    }
+
+    public double getZ() {
+        i2c.read(MPU6050_ACCEL_XOUT_H + 4, 6, buffer);
+        int z = (buffer[4] << 8) | (buffer[5] & 0xFF);
+        return z / 16384.0;
+    }
+
+    public void setRange(Range range) {
+        // Not supported
+    }
+
+    public void setZero(double zero) {
+        // Not supported
+    }
+}
+  
 
 }
